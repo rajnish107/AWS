@@ -176,7 +176,7 @@ project-root/
 └── architecture-diagram.png (optional)
 ```
 
-## Deployment Instructions
+## **🔔 Important:** Deployment Instructions
 1. Open AWS CloudFormation Console
 2. Create new stack with provided template
 3. Wait for stack creation to complete
