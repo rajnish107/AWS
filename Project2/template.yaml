@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Serverless Data Pipeline using S3 + Lambda + DynamoDB
+
+Resources:
+  # S3 Bucket for file uploads
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-upload-bucket"
+
+  # DynamoDB Table for processed file metadata
+  ProcessedDataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-processed-files"
+      AttributeDefinitions:
+        - AttributeName: FileName
+          AttributeType: S
+      KeySchema:
+        - AttributeName: FileName
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # IAM Role for Lambda Function
+  ProcessFileFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "arn:aws:s3:::${UploadBucket}/*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource: !GetAtt ProcessedDataTable.Arn
+
+  # Lambda Function for processing files
+  ProcessFileFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-process-s3-file"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt ProcessFileFunctionRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import urllib.parse
+          import os
+          
+          def lambda_handler(event, context):
+              # This is a placeholder function
+              # Replace this with your actual processing logic
+              
+              s3 = boto3.client('s3')
+              dynamodb = boto3.resource('dynamodb')
+              
+              # Get the object from the event
+              bucket = event['Records'][0]['s3']['bucket']['name']
+              key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
+              
+              try:
+                  # Get the object
+                  response = s3.get_object(Bucket=bucket, Key=key)
+                  
+                  # Process the file (add your logic here)
+                  print(f"Processing file: {key} from bucket: {bucket}")
+                  
+                  # Store metadata in DynamoDB
+                  table = dynamodb.Table(os.environ['TABLE_NAME'])
+                  table.put_item(
+                      Item={
+                          'FileName': key,
+                          'ProcessedAt': str(context.aws_request_id),
+                          'Status': 'Processed'
+                      }
+                  )
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps(f'Successfully processed {key}')
+                  }
+                  
+              except Exception as e:
+                  print(f"Error processing file {key}: {str(e)}")
+                  raise e
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ProcessedDataTable
+          BUCKET_NAME: !Ref UploadBucket
+
+  # Permission for S3 to invoke Lambda
+  S3InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ProcessFileFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::${UploadBucket}/*"
+
+Outputs:
+  S3BucketName:
+    Description: Upload bucket name
+    Value: !Ref UploadBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-BucketName"
+  
+  DynamoDBTableName:
+    Description: Processed DynamoDB table name
+    Value: !Ref ProcessedDataTable
+    Export:
+      Name: !Sub "${AWS::StackName}-TableName"
+  
+  LambdaFunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt ProcessFileFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FunctionArn"
+  
+  NextSteps:
+    Description: Manual setup required after stack creation
+    Value: !Sub |
+      After stack creation, go to S3 Console:
+      1. Open bucket: ${UploadBucket}
+      2. Go to Properties tab
+      3. Scroll to Event notifications
+      4. Click Create event notification
+      5. Name: ProcessFileEvent
+      6. Event types: Select "All object create events"
+      7. Destination: Lambda function
+      8. Choose function: ${ProcessFileFunction}
+      9. Save changes

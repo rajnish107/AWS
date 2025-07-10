@@ -1,0 +1,14 @@
+{
+  "building_id": "BLD-9183",
+  "report_generated_at": "2025-07-10T10:15:00Z",
+  "metrics": {
+    "total_energy_kwh": 1842.76,
+    "peak_usage_kwh": 276.40,
+    "avg_power_kw": 153.56,
+    "anomalies_detected": false
+  },
+  "location": {
+    "city": "Pune",
+    "country": "India"
+  }
+}
