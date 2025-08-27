@@ -1,3 +1,3 @@
 # Goto Projects
-Project1_link
-Project2_link
+[Project1](Project1)
+[Project2](Project2)
